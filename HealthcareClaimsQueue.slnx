@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/HealthcareClaimsQueue.API/HealthcareClaimsQueue.API.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/HealthcareClaimsQueue.Tests/HealthcareClaimsQueue.Tests.csproj" />
+  </Folder>
+</Solution>

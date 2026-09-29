@@ -1,0 +1,88 @@
+@page "/supervisor/queue/{queueId}"
+@{
+    ViewData["Title"] = "Queue List";
+    var queueId = Convert.ToInt32(RouteData.Values["queueId"]);
+    var userId = HttpContext.Request.Headers["X-User-Id"].ToString();
+    ViewData["UserId"] = userId;
+}
+
+<h2>Queue Tasks</h2>
+
+<div class="toolbar">
+    <label>
+        Page: <input type="number" id="page" value="1" min="1" />
+        Page Size: <input type="number" id="pageSize" value="100" min="1" max="500" />
+    </label>
+    <button onclick="loadTasks()">Load</button>
+</div>
+
+<div id="message"></div>
+
+<div id="tasksContainer"></div>
+
+<script>
+async function loadTasks() {
+    const page = document.getElementById('page').value;
+    const pageSize = document.getElementById('pageSize').value;
+    const queueId = @queueId;
+
+    try {
+        const response = await fetch(`/api/queues/${queueId}/tasks?page=${page}&pageSize=${pageSize}`, {
+            headers: { 'X-User-Id': '@userId' }
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            showMessage('Error: ' + error.error, 'error');
+            return;
+        }
+
+        const data = await response.json();
+        renderTasks(data);
+    } catch (error) {
+        showMessage('Failed to load tasks: ' + error.message, 'error');
+    }
+}
+
+function renderTasks(data) {
+    if (!data.data || data.data.length === 0) {
+        document.getElementById('tasksContainer').innerHTML = '<p>No tasks found.</p>';
+        return;
+    }
+
+    let html = `<p>Total: ${data.pageInfo.totalCount} tasks (Page ${data.pageInfo.page} of ${data.pageInfo.totalPages})</p>`;
+    html += '<table>';
+    html += '<thead><tr>';
+    html += '<th>Claim #</th><th>Queue</th><th>Priority</th><th>Due Date</th>';
+    html += '<th>Assigned To</th><th>Assigned By</th><th>Locked By</th><th>Locked Until</th>';
+    html += '</tr></thead><tbody>';
+
+    data.data.forEach(task => {
+        const dueDate = new Date(task.dueDate).toLocaleDateString();
+        const lockedUntil = task.lockedUntil ? new Date(task.lockedUntil).toLocaleString() : '-';
+
+        html += '<tr>';
+        html += `<td>${task.claimNumber}</td>`;
+        html += `<td>${task.queue}</td>`;
+        html += `<td>${task.priority}</td>`;
+        html += `<td>${dueDate}</td>`;
+        html += `<td>${task.assignedTo || '-'}</td>`;
+        html += `<td>${task.assignedBy || '-'}</td>`;
+        html += `<td>${task.lockedBy || '-'}</td>`;
+        html += `<td>${lockedUntil}</td>`;
+        html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+    document.getElementById('tasksContainer').innerHTML = html;
+}
+
+function showMessage(msg, type) {
+    const msgDiv = document.getElementById('message');
+    msgDiv.textContent = msg;
+    msgDiv.className = `message ${type}`;
+}
+
+// Load on page load
+loadTasks();
+</script>

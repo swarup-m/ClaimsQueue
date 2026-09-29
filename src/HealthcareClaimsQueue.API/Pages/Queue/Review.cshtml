@@ -1,0 +1,239 @@
+@page "/queue/{queueId}"
+@{
+    ViewData["Title"] = "Queue Review";
+    var queueId = Convert.ToInt32(RouteData.Values["queueId"]);
+    var userId = HttpContext.Request.Headers["X-User-Id"].ToString();
+    ViewData["UserId"] = userId;
+}
+
+<h2>Review Queue</h2>
+
+<div class="toolbar">
+    <button onclick="getNextClaim()">Get Next Claim</button>
+    <button onclick="reviewClaim()" style="background-color: #28a745;">Review (Lock)</button>
+    <button onclick="releaseClaim()" style="background-color: #ffc107; color: black;">Release</button>
+    <button onclick="openForwardDialog()" style="background-color: #17a2b8;">Forward</button>
+    <button onclick="openCompleteDialog()" style="background-color: #6f42c1;">Complete</button>
+</div>
+
+<div id="message"></div>
+
+<div id="currentTaskContainer" style="border: 1px solid #ddd; padding: 15px; margin: 15px 0;">
+    <h3>Current Task</h3>
+    <p id="currentTask">No task selected.</p>
+</div>
+
+<!-- Forward Dialog -->
+<div id="forwardDialog" style="display: none; border: 1px solid #ddd; padding: 15px; background: #f9f9f9;">
+    <h4>Forward Claim</h4>
+    <label>Forward to user: <input type="text" id="forwardUser" placeholder="username" /></label>
+    <button onclick="submitForward()">Forward</button>
+    <button onclick="closeDialog('forwardDialog')" class="danger">Cancel</button>
+</div>
+
+<!-- Complete Dialog -->
+<div id="completeDialog" style="display: none; border: 1px solid #ddd; padding: 15px; background: #f9f9f9;">
+    <h4>Complete Review</h4>
+    <label>Outcome:</label><br/>
+    <select id="outcome" style="padding: 8px; margin: 10px 0;">
+        <option value="">-- Select Outcome --</option>
+        <option value="Approve">Approve</option>
+        <option value="PartialDenial">Partial Denial</option>
+        <option value="Deny">Deny</option>
+        <option value="Pend">Pend</option>
+    </select><br/>
+    <label>Note (optional): <br/><textarea id="note" rows="3" style="width: 100%; padding: 8px;"></textarea></label>
+    <button onclick="submitComplete()">Complete</button>
+    <button onclick="closeDialog('completeDialog')" class="danger">Cancel</button>
+</div>
+
+<script>
+let currentTask = null;
+const queueId = @queueId;
+const userId = '@userId';
+
+async function getNextClaim() {
+    try {
+        const response = await fetch(`/api/queues/${queueId}/next`, {
+            headers: { 'X-User-Id': userId }
+        });
+
+        if (response.status === 204) {
+            showMessage('No tasks available in this queue', 'success');
+            return;
+        }
+
+        if (!response.ok) {
+            const error = await response.json();
+            showMessage('Error: ' + error.error, 'error');
+            return;
+        }
+
+        const task = await response.json();
+        currentTask = task;
+        updateTaskDisplay();
+        showMessage(`Next task: ${task.claimNumber}`, 'success');
+    } catch (error) {
+        showMessage('Failed to get next claim: ' + error.message, 'error');
+    }
+}
+
+async function reviewClaim() {
+    if (!currentTask) {
+        showMessage('Please get a task first', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/tasks/${currentTask.taskId}/review`, {
+            method: 'POST',
+            headers: { 'X-User-Id': userId, 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+
+        if (response.status === 409) {
+            const error = await response.json();
+            showMessage('Lock conflict: ' + error.error, 'error');
+            return;
+        }
+
+        if (!response.ok) {
+            const error = await response.json();
+            showMessage('Error: ' + error.error, 'error');
+            return;
+        }
+
+        const result = await response.json();
+        showMessage(result.message, 'success');
+    } catch (error) {
+        showMessage('Failed to review claim: ' + error.message, 'error');
+    }
+}
+
+async function releaseClaim() {
+    if (!currentTask) {
+        showMessage('No task to release', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/tasks/${currentTask.taskId}/release`, {
+            method: 'POST',
+            headers: { 'X-User-Id': userId, 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            showMessage('Error: ' + error.error, 'error');
+            return;
+        }
+
+        showMessage('Task released', 'success');
+    } catch (error) {
+        showMessage('Failed to release claim: ' + error.message, 'error');
+    }
+}
+
+function openForwardDialog() {
+    if (!currentTask) {
+        showMessage('Please get a task first', 'error');
+        return;
+    }
+    document.getElementById('forwardDialog').style.display = 'block';
+}
+
+async function submitForward() {
+    const targetUser = document.getElementById('forwardUser').value;
+    if (!targetUser) {
+        showMessage('Please enter a username', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/tasks/${currentTask.taskId}/forward`, {
+            method: 'POST',
+            headers: { 'X-User-Id': userId, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ targetUserId: targetUser })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            showMessage('Error: ' + error.error, 'error');
+            return;
+        }
+
+        showMessage('Task forwarded to ' + targetUser, 'success');
+        closeDialog('forwardDialog');
+    } catch (error) {
+        showMessage('Failed to forward claim: ' + error.message, 'error');
+    }
+}
+
+function openCompleteDialog() {
+    if (!currentTask) {
+        showMessage('Please get a task first', 'error');
+        return;
+    }
+    document.getElementById('completeDialog').style.display = 'block';
+}
+
+async function submitComplete() {
+    const outcome = document.getElementById('outcome').value;
+    const note = document.getElementById('note').value;
+
+    if (!outcome) {
+        showMessage('Please select an outcome', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/tasks/${currentTask.taskId}/complete`, {
+            method: 'POST',
+            headers: { 'X-User-Id': userId, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ outcome, note: note || null })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            showMessage('Error: ' + error.error, 'error');
+            return;
+        }
+
+        showMessage(`Task completed with outcome: ${outcome}`, 'success');
+        closeDialog('completeDialog');
+        currentTask = null;
+        updateTaskDisplay();
+    } catch (error) {
+        showMessage('Failed to complete review: ' + error.message, 'error');
+    }
+}
+
+function closeDialog(dialogId) {
+    document.getElementById(dialogId).style.display = 'none';
+}
+
+function updateTaskDisplay() {
+    if (!currentTask) {
+        document.getElementById('currentTask').innerHTML = 'No task selected.';
+        return;
+    }
+
+    const daysUntilDue = currentTask.daysUntilDue;
+    let urgency = daysUntilDue < 1 ? '🔴 OVERDUE' : daysUntilDue < 3 ? '🟡 URGENT' : '🟢 OK';
+
+    document.getElementById('currentTask').innerHTML = `
+        <strong>Claim:</strong> ${currentTask.claimNumber}<br/>
+        <strong>Queue:</strong> ${currentTask.queue}<br/>
+        <strong>Priority:</strong> ${currentTask.priority}<br/>
+        <strong>Due:</strong> ${daysUntilDue} days (${urgency})<br/>
+        <strong>Assigned To:</strong> ${currentTask.assignedTo || 'Unassigned'}
+    `;
+}
+
+function showMessage(msg, type) {
+    const msgDiv = document.getElementById('message');
+    msgDiv.textContent = msg;
+    msgDiv.className = `message ${type}`;
+}
+</script>
