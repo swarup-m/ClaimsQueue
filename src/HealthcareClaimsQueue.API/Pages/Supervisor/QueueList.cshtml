@@ -3,6 +3,11 @@
     ViewData["Title"] = "Queue List";
     var queueId = Convert.ToInt32(RouteData.Values["queueId"]);
     var userId = HttpContext.Request.Headers["X-User-Id"].ToString();
+    // Use default user if header not provided
+    if (string.IsNullOrEmpty(userId))
+    {
+        userId = "sfranklin";  // Default supervisor user
+    }
     ViewData["UserId"] = userId;
 }
 
