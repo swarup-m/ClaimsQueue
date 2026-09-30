@@ -12,7 +12,26 @@
 }
 
 <h2>Queue Tasks</h2>
+<!-- User Selector -->
+<div style="background-color: #f0f0f0; padding: 15px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 5px;">
+    <strong>Current User:</strong>
+    <select id="userSelector" onchange="switchUser()" style="padding: 8px; margin: 0 10px; font-size: 14px;">
+        <option value="ereyes">Elena Reyes (Reviewer)</option>
+        <option value="jchen">Jason Chen (Reviewer)</option>
+        <option value="msmith">Maria Smith (Reviewer)</option>
+        <option value="pjohnson">Paul Johnson (Supervisor)</option>
+        <option value="custom">Custom User...</option>
+    </select>
+    <span id="currentUserDisplay" style="margin-left: 20px; font-weight: bold;">Logged in as: <span id="userText">@userId</span></span>
+</div>
 
+<!-- Custom User Input -->
+<div id="customUserDiv" style="display: none; background-color: #fff3cd; padding: 15px; margin-bottom: 15px; border: 1px solid #ffc107;">
+    <label>Enter Custom Username:</label>
+    <input type="text" id="customUserInput" placeholder="e.g., testuser" style="padding: 8px; margin: 0 10px; font-size: 14px;" />
+    <button onclick="setCustomUser()" style="padding: 8px 15px; background-color: #007bff; color: white; border: none; cursor: pointer;">Set User</button>
+    <button onclick="cancelCustomUser()" style="padding: 8px 15px; background-color: #6c757d; color: white; border: none; cursor: pointer;">Cancel</button>
+</div>
 <div class="toolbar">
     <label>
         Page: <input type="number" id="page" value="1" min="1" />
@@ -24,6 +43,57 @@
 <div id="message"></div>
 
 <div id="tasksContainer"></div>
+let userId = '@userId';
+
+// Initialize user selector
+function initUserSelector() {
+const savedUser = localStorage.getItem('selectedUser');
+if (savedUser) {
+userId = savedUser;
+updateUserDisplay();
+}
+}
+
+function switchUser() {
+const selector = document.getElementById('userSelector');
+const selectedValue = selector.value;
+
+if (selectedValue === 'custom') {
+document.getElementById('customUserDiv').style.display = 'block';
+} else {
+document.getElementById('customUserDiv').style.display = 'none';
+userId = selectedValue;
+localStorage.setItem('selectedUser', userId);
+updateUserDisplay();
+}
+}
+
+function setCustomUser() {
+const customInput = document.getElementById('customUserInput');
+const customUser = customInput.value.trim();
+
+if (!customUser) {
+showMessage('Please enter a username', 'error');
+return;
+}
+
+userId = customUser;
+localStorage.setItem('selectedUser', userId);
+document.getElementById('userSelector').value = 'custom';
+document.getElementById('customUserDiv').style.display = 'none';
+updateUserDisplay();
+showMessage(`Switched to user: ${userId}`, 'success');
+}
+
+function cancelCustomUser() {
+document.getElementById('customUserDiv').style.display = 'none';
+document.getElementById('customUserInput').value = '';
+document.getElementById('userSelector').value = userId;
+}
+
+function updateUserDisplay() {
+document.getElementById('userText').textContent = userId;
+}
 
 <script>
 async function loadTasks() {

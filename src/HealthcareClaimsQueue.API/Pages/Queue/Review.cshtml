@@ -13,13 +13,33 @@
 }
 
 <h2>Review Queue</h2>
+<!-- User Selector -->
+<div style="background-color: #f0f0f0; padding: 15px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 5px;">
+    <strong>Current User:</strong>
+    <select id="userSelector" onchange="switchUser()" style="padding: 8px; margin: 0 10px; font-size: 14px;">
+        <option value="ereyes">Elena Reyes (Reviewer)</option>
+        <option value="jchen">Jason Chen (Reviewer)</option>
+        <option value="msmith">Maria Smith (Reviewer)</option>
+        <option value="pjohnson">Paul Johnson (Supervisor)</option>
+        <option value="custom">Custom User...</option>
+    </select>
+    <span id="currentUserDisplay" style="margin-left: 20px; font-weight: bold;">Logged in as: <span id="userText">ereyes</span></span>
+</div>
 
+<!-- Custom User Input -->
+<div id="customUserDiv" style="display: none; background-color: #fff3cd; padding: 15px; margin-bottom: 15px; border: 1px solid #ffc107;">
+    <label>Enter Custom Username:</label>
+    <input type="text" id="customUserInput" placeholder="e.g., testuser" style="padding: 8px; margin: 0 10px; font-size: 14px;" />
+    <button onclick="setCustomUser()" style="padding: 8px 15px; background-color: #007bff; color: white; border: none; cursor: pointer;">Set User</button>
+    <button onclick="cancelCustomUser()" style="padding: 8px 15px; background-color: #6c757d; color: white; border: none; cursor: pointer;">Cancel</button>
+</div>
 <div class="toolbar">
     <button onclick="getNextClaim()">Get Next Claim</button>
     <button onclick="reviewClaim()" style="background-color: #28a745;">Review (Lock)</button>
     <button onclick="releaseClaim()" style="background-color: #ffc107; color: black;">Release</button>
     <button onclick="openForwardDialog()" style="background-color: #17a2b8;">Forward</button>
     <button onclick="openCompleteDialog()" style="background-color: #6f42c1;">Complete</button>
+    <button onclick="viewMyTasks()" style="background-color: #20c997; margin-left: 20px;">📋 My Assigned Tasks</button>
 </div>
 
 <div id="message"></div>
@@ -53,11 +73,71 @@
     <button onclick="closeDialog('completeDialog')" class="danger">Cancel</button>
 </div>
 
+<!-- My Assigned Tasks Dialog -->
+<div id="myTasksDialog" style="display: none; border: 1px solid #ddd; padding: 15px; background: #f9f9f9; max-height: 600px; overflow-y: auto;">
+    <h4>My Assigned Tasks (Forwarded to Me)</h4>
+    <p style="font-size: 12px; color: #666;">Tasks that have been forwarded to you</p>
+    <div id="myTasksList"></div>
+    <button onclick="closeDialog('myTasksDialog')" class="danger" style="margin-top: 10px;">Close</button>
+</div>
+
 <script>
 let currentTask = null;
 const queueId = @queueId;
-const userId = '@userId';
+let userId = '@userId';
 
+// Initialize user selector
+function initUserSelector() {
+    const savedUser = localStorage.getItem('selectedUser');
+    if (savedUser) {
+        userId = savedUser;
+        updateUserDisplay();
+    }
+}
+
+function switchUser() {
+    const selector = document.getElementById('userSelector');
+    const selectedValue = selector.value;
+
+    if (selectedValue === 'custom') {
+        document.getElementById('customUserDiv').style.display = 'block';
+    } else {
+        document.getElementById('customUserDiv').style.display = 'none';
+        userId = selectedValue;
+        localStorage.setItem('selectedUser', userId);
+        updateUserDisplay();
+    }
+}
+
+function setCustomUser() {
+    const customInput = document.getElementById('customUserInput');
+    const customUser = customInput.value.trim();
+
+    if (!customUser) {
+        showMessage('Please enter a username', 'error');
+        return;
+    }
+
+    userId = customUser;
+    localStorage.setItem('selectedUser', userId);
+    document.getElementById('userSelector').value = 'custom';
+    document.getElementById('customUserDiv').style.display = 'none';
+    updateUserDisplay();
+    showMessage(`Switched to user: ${userId}`, 'success');
+}
+
+function cancelCustomUser() {
+    document.getElementById('customUserDiv').style.display = 'none';
+    document.getElementById('customUserInput').value = '';
+    document.getElementById('userSelector').value = userId;
+}
+
+function updateUserDisplay() {
+    document.getElementById('userText').textContent = userId;
+}
+
+// Initialize on page load
+initUserSelector();
 async function getNextClaim() {
     try {
         const response = await fetch(`/api/queues/${queueId}/next`, {
@@ -241,5 +321,64 @@ function showMessage(msg, type) {
     const msgDiv = document.getElementById('message');
     msgDiv.textContent = msg;
     msgDiv.className = `message ${type}`;
+}
+
+async function viewMyTasks() {
+    try {
+        // Fetch all tasks assigned to me
+        const response = await fetch(`/api/queues/${queueId}/tasks?page=1&pageSize=100`, {
+            headers: { 'X-User-Id': userId }
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            showMessage('Error: ' + error.error, 'error');
+            return;
+        }
+
+        const data = await response.json();
+        const myTasks = data.data.filter(t => t.assignedTo === userId);
+
+        if (myTasks.length === 0) {
+            document.getElementById('myTasksList').innerHTML = '<p style="color: #666;">No tasks assigned to you yet.</p>';
+        } else {
+            let html = '<table style="width: 100%; border-collapse: collapse;">';
+            html += '<tr style="background-color: #f5f5f5;">';
+            html += '<th style="border: 1px solid #ddd; padding: 10px; text-align: left;">Claim #</th>';
+            html += '<th style="border: 1px solid #ddd; padding: 10px; text-align: left;">Queue</th>';
+            html += '<th style="border: 1px solid #ddd; padding: 10px; text-align: left;">Priority</th>';
+            html += '<th style="border: 1px solid #ddd; padding: 10px; text-align: left;">Due Date</th>';
+            html += '<th style="border: 1px solid #ddd; padding: 10px; text-align: left;">Action</th>';
+            html += '</tr>';
+
+            myTasks.forEach(task => {
+                const dueDate = new Date(task.dueDate).toLocaleDateString();
+                html += '<tr>';
+                html += `<td style="border: 1px solid #ddd; padding: 10px;">${task.claimNumber}</td>`;
+                html += `<td style="border: 1px solid #ddd; padding: 10px;">${task.queue}</td>`;
+                html += `<td style="border: 1px solid #ddd; padding: 10px;">${task.priority}</td>`;
+                html += `<td style="border: 1px solid #ddd; padding: 10px;">${dueDate}</td>`;
+                html += `<td style="border: 1px solid #ddd; padding: 10px;"><button onclick="selectTaskFromList(${task.taskId}, '${task.claimNumber}')">Select</button></td>`
+;
+                html += '</tr>';
+            });
+
+            html += '</table>';
+            document.getElementById('myTasksList').innerHTML = html;
+        }
+
+        // Show dialog
+        document.getElementById('myTasksDialog').style.display = 'block';
+    } catch (error) {
+        showMessage('Failed to load your tasks: ' + error.message, 'error');
+    }
+}
+
+function selectTaskFromList(taskId, claimNumber) {
+    // Load the selected task
+    currentTask = { taskId, claimNumber };
+    updateTaskDisplay();
+    closeDialog('myTasksDialog');
+    showMessage(`Selected task: ${claimNumber}`, 'success');
 }
 </script>
